@@ -37,6 +37,9 @@ class NSLookup
     /**
      * Perform NSLookup
      * 
+     * @todo Add error check for valid type
+     * e.g. all, any, a, mx, ns, txt
+     * 
      * @method string[] nslookup( $string ) 
      * @param string $type
      * @return string[] An array of string data

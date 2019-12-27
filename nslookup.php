@@ -29,9 +29,45 @@ class NSLookup
      * 
      * @param string $domain
      */
-    public function __construct($domain)
+    public function __construct( $domain )
     {
-        $this->domain = $this->sanitize_data($domain);
+        $this->domain = $this->sanitize_input( $domain );
+    }
+
+    /**
+     * Perform NSLookup
+     * 
+     * @method string[] nslookup( $string ) 
+     * @param string $type
+     * @return string[] An array of string data
+     */
+    public function nslookup( $type )
+    {
+        if( empty( $type ) )
+        {
+            $type = "all";
+        }
+        else
+        {
+            $type = $this->sanitize_input( $type );
+        }
+
+        try
+        {
+            exec(
+                "nslookup -debug -type=$type $this->domain 8.8.8.8",
+                $result
+            );
+
+            $result = $this->sanitize_result( $result );
+            $records = null;
+        }
+        catch( Exception $e )
+        {
+            $records = null;
+        }
+
+        return null;
     }
 
     /**
@@ -40,10 +76,44 @@ class NSLookup
      * @param string $data
      * @return string $data Sanitized input
      */
-    protected function sanitize_data($data){
-        $data = trim($data);
-        $data = stripslashes($data);
-        $data = htmlspecialchars($data);
+    protected function sanitize_input( $data )
+    {
+        $data = trim( $data );
+        $data = stripslashes( $data );
+        $data = htmlspecialchars( $data );
+
+        return $data;
+    }
+
+    /**
+     * Sanitizes NSLookup results
+     * 
+     * @param string[] An array of string results
+     * @return string[] An array of sanitized string data
+     */
+    protected function sanitize_result( $data )
+    {
+        /**
+         * Remove dashed line elements and blank elements
+         * @var $key=>$value $data[]
+         */
+        foreach( $data as $key=>$value )
+        {
+            if(
+                $value == "------------" ||
+                empty( $value )
+            )
+            {
+                unset( $data[$key] );
+                continue;
+            }
+        }
+
+        /**
+         * IMPORTANT!
+         * Reset array after unset
+         */
+        $data = array_values( $data );
 
         return $data;
     }

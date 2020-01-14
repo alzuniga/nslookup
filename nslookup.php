@@ -89,12 +89,14 @@ class NSLookup
      * @param array $data An array of query results
      * @return array An array of query results records
      */
-    protected function extract_records( $data ){
+    protected function extract_records( $data )
+    {
         $data_count = count( $data );
         $records = array();
         $type = null;
 
-        for( $i = 1; $i < $data_count -1 ; $i++ ){
+        for( $i = 1; $i < $data_count -1 ; $i++ )
+        {
             /**
              * Previous, Current, Next record in array
              */
@@ -102,16 +104,29 @@ class NSLookup
             $record = strtolower( $data[ $i ] );
             $next = strtolower( $data[ $i + 1 ] );
 
+            /**
+             * Handle A, NS, MX records
+             */
             if(
                 $this->validate_record( $prev, $next, $this->domain )
-            ){
+            )
+            {
                 if ( stristr( $record, "nameserver" ) )
                     $type = "ns";
                 elseif( stristr( $record, "mx" ) )
                     $type = "mx";
                 elseif( stristr( $record, "internet address" ) )
                     $type = "a";
+                
+                $records[ $type ][] = $this->record_to_array(
+                    $type,
+                    $record,
+                    $next
+                );
             }
+            /**
+             * Handle TXT record
+             */
             elseif(
                 ( $i + 2 ) < $data_count &&
                 $this->validate_record(
@@ -119,8 +134,9 @@ class NSLookup
                     strtolower( $data[ $i + 2 ] ),
                     $this->domain
                 )
-            ){
-                $records[ "txt" ][] = $this->format_record(
+            )
+            {
+                $records[ "txt" ][] = $this->record_to_array(
                     "txt",
                     $next,
                     strtolower( $data[ $i + 2 ] )
@@ -128,18 +144,109 @@ class NSLookup
             }
             else continue;
         }
+
+        return $records;
     }
 
     /**
      * Displays manually generated exception
-     * @param array $e
+     * @param array $e The exception that was thrown
      * @return void
      */
-    protected function display_exception($e)
+    protected function display_exception( $e )
     {
         echo "Exception: ", $e->getMessage(), " on line ",
         $e->getLine(), " of ", $e->getFile(), "\n";
         echo "Trace: ", $e->getTrace(), "\n";
+    }
+
+    /**
+     * Extracts and formats the ttl to human
+     * readable format.
+     * @param string $ttl The ttl data
+     * @return string $ttl The ttl in human
+     * readable format
+     */
+    protected function format_ttl( $ttl )
+    {
+        try
+        {
+            preg_match(
+                "/(\w+\s=\s\d+)/",
+                $ttl,
+                $match
+            );
+        }
+        catch( Exception $e )
+        {
+            $this->display_exception( $e );
+            return;
+        }
+
+        $ttl = explode(
+            "=",
+            str_replace(
+                ' ',
+                '',
+                $match[ 0 ]
+            )
+        );
+
+        $ttl = $this->ttl_to_readable( $ttl );
+
+        return $ttl;
+    }
+
+    /**
+     * Converts record to array format
+     * @param string $type The type of record
+     * @param string $record The record
+     * @param string $ttl The ttl of the record
+     * @return array The record in array format
+     */
+    protected function record_to_array( $type, $record, $ttl )
+    {
+        $record = str_replace(' ', '', $record);
+
+        switch( $type )
+        {
+            // A Record
+            case 'a':
+                $record = explode("=", $record);
+                return array(
+                    "ip"    =>  $record[ 1 ],
+                    "ttl"   =>  $this->format_ttl($ttl)
+                );
+                break;
+            // MX Records
+            case 'mx':
+                $record     = explode( ",", $record );
+                $priority   = explode( "=", $record[ 0 ] );
+                $host       = explode( "=", $record[ 1 ] );
+                return array(
+                    "host"      => $host[ 1 ],
+                    "priority"  => $priority[ 1 ],
+                    "ip"        => $this->resolve_ip( $host[ 1 ] ),
+                    "ttl"       => $this->format_ttl( $ttl ) 
+                );
+                break;
+            // NS Records
+            case 'ns':
+                $record = explode( "=", $record );
+                return array(
+                    "host"  => $record[ 1 ],
+                    "ip"    => $this->resolve_ip( $record[ 1 ] ),
+                    "ttl"   => $this->format_ttl( $ttl )
+                );
+                break;
+            // TXT Records
+            case 'txt':
+                return array(
+                    "record"    => $record,
+                    "ttl"       => $this->format_ttl( $ttl )
+                );
+                break;
+        }
     }
 
     /**
@@ -192,6 +299,66 @@ class NSLookup
     }
 
     /**
+     * Convert TTL to human readable format
+     * @param string $ttl The ttl value
+     * @return string $readable The ttl value in
+     * human readable format
+     */
+    protected function ttl_to_readable( $ttl )
+    {
+        $ttl        = intval( $ttl[ 1 ] );
+        $readable   = "";
+
+        // Day(s)
+        $d = intval( $ttl / ( 3600 * 24 ) );
+        // Hour(s)
+        $h = ( $ttl / 3600 ) % 24;
+        // Minute(s)
+        $m = ( $ttl / 60 ) % 60;
+        // Seconds(s)
+        $s = $ttl % 60;
+
+        if( $d > 0 )
+        {
+            $readable .= (
+                $d == 1?
+                "$d day ":
+                "$d days "
+            );
+        }
+
+        if( $h > 0 )
+        {
+            $readable .= (
+                $h == 1?
+                "$h hour ":
+                "$h hours "
+            );
+        }
+
+        if( $m > 0 )
+        {
+            $readable .= (
+                $m == 1?
+                "$m minute ":
+                "$m minutes "
+            );
+        }
+
+        if( $s > 0 )
+        {
+            $readable .= (
+                $s == 1?
+                "$s second":
+                "$s seconds"
+            );
+        }
+
+        return $readable;
+
+    }
+
+    /**
      * Validates domain format
      * 
      * @param string A domain string
@@ -224,7 +391,8 @@ class NSLookup
      * @param string $domain The domain name
      * @return bool The result of the validation
      */
-    protected function validate_record( $prev, $next, $domain ){
+    protected function validate_record( $prev, $next, $domain )
+    {
         if( $prev == $domain && stristr( $next, "ttl" ) ) return TRUE;
         else return FALSE;
     }

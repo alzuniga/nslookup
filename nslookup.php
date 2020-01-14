@@ -73,19 +73,20 @@ class NSLookup
             exec( $command, $result );
 
             $result = $this->sanitize_result( $result );
-            $records = null;
+            $records = $this->extract_records( $result );
         }
         catch( Exception $e )
         {
             $this->display_exception( $e );
         }
 
-        return $result;
+        return $records;
     }
 
 
     /**
-     *  Extracts records for query result
+     * Returns an array of extracted records from
+     * query result.
      * @param array $data An array of query results
      * @return array An array of query results records
      */
@@ -247,6 +248,36 @@ class NSLookup
                 );
                 break;
         }
+    }
+
+    /**
+     * Resolves IP address for given FQDN
+     * @param string $domain The FQDN
+     * @return string $ip The I.P. address of
+     * the FQDN
+     */
+
+    protected function resolve_ip( $domain ){
+        $command = escapeshellcmd(
+            "nslookup -type=a $domain 8.8.8.8"
+        );
+
+        exec( $command, $result );
+
+        $result = $this->sanitize_result( $result );
+
+        if( $result[ 3 ] )
+        {
+            $result = str_replace( ' ', '', $result[ 3 ] );
+            $result = explode( ":", $result );
+            $ip = $result[ 1 ];
+        }
+        else
+        {
+            $ip = "";
+        }
+
+        return $ip;
     }
 
     /**

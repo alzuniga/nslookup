@@ -37,7 +37,7 @@ class NSLookup
         }
         catch ( Exception $e )
         {
-            $this->display_exception($e);
+            $this->display_exception( $e );
         }
 
         $this->domain = escapeshellarg( $domain );
@@ -61,7 +61,7 @@ class NSLookup
         }
         catch ( Exception $e )
         {
-            $this->display_exception($e);
+            $this->display_exception( $e );
         }
         
 
@@ -70,21 +70,70 @@ class NSLookup
             $command = escapeshellcmd(
                 "nslookup -debug -type=$type $this->domain 8.8.8.8"
             );
-            exec( $command, $result);
+            exec( $command, $result );
 
             $result = $this->sanitize_result( $result );
             $records = null;
         }
         catch( Exception $e )
         {
-            $this->display_exception($e);
+            $this->display_exception( $e );
         }
 
         return $result;
     }
 
+
+    /**
+     *  Extracts records for query result
+     * @param array $data An array of query results
+     * @return array An array of query results records
+     */
+    protected function extract_records( $data ){
+        $data_count = count( $data );
+        $records = array();
+        $type = null;
+
+        for( $i = 1; $i < $data_count -1 ; $i++ ){
+            /**
+             * Previous, Current, Next record in array
+             */
+            $prev = strtolower( $data[ $i - 1 ] );
+            $record = strtolower( $data[ $i ] );
+            $next = strtolower( $data[ $i + 1 ] );
+
+            if(
+                $this->validate_record( $prev, $next, $this->domain )
+            ){
+                if ( stristr( $record, "nameserver" ) )
+                    $type = "ns";
+                elseif( stristr( $record, "mx" ) )
+                    $type = "mx";
+                elseif( stristr( $record, "internet address" ) )
+                    $type = "a";
+            }
+            elseif(
+                ( $i + 2 ) < $data_count &&
+                $this->validate_record(
+                    $prev,
+                    strtolower( $data[ $i + 2 ] ),
+                    $this->domain
+                )
+            ){
+                $records[ "txt" ][] = $this->format_record(
+                    "txt",
+                    $next,
+                    strtolower( $data[ $i + 2 ] )
+                );
+            }
+            else continue;
+        }
+    }
+
     /**
      * Displays manually generated exception
+     * @param array $e
+     * @return void
      */
     protected function display_exception($e)
     {
@@ -165,6 +214,19 @@ class NSLookup
             throw new Exception( "Invalid domain format." );
         }
         return $domain;
+    }
+
+    /**
+     * Validates a record based on the previous and
+     * next entry in the array
+     * @param string $prev The previous data entry
+     * @param string $next The next data entry
+     * @param string $domain The domain name
+     * @return bool The result of the validation
+     */
+    protected function validate_record( $prev, $next, $domain ){
+        if( $prev == $domain && stristr( $next, "ttl" ) ) return TRUE;
+        else return FALSE;
     }
 
     /**

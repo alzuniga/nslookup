@@ -33,14 +33,12 @@ class NSLookup
     {
         try
         {
-            $this->validate_domain( $domain );
+            $this->domain = $this->validate_domain( $domain );
         }
         catch ( Exception $e )
         {
             $this->display_exception( $e );
         }
-
-        $this->domain = escapeshellarg( $domain );
     }
 
     /**
@@ -64,11 +62,12 @@ class NSLookup
             $this->display_exception( $e );
         }
         
+        $escaped_domain = escapeshellarg( $this->domain );
 
         try
         {
             $command = escapeshellcmd(
-                "nslookup -debug -type=$type $this->domain 8.8.8.8"
+                "nslookup -debug -type=$type $escaped_domain 8.8.8.8"
             );
             exec( $command, $result );
 
@@ -94,7 +93,7 @@ class NSLookup
     {
         $data_count = count( $data );
         $records = array();
-        $type = null;
+        $type = null;;
 
         for( $i = 1; $i < $data_count -1 ; $i++ )
         {
@@ -118,6 +117,7 @@ class NSLookup
                     $type = "mx";
                 elseif( stristr( $record, "internet address" ) )
                     $type = "a";
+                else continue;
                 
                 $records[ $type ][] = $this->record_to_array(
                     $type,
@@ -243,7 +243,7 @@ class NSLookup
             // TXT Records
             case 'txt':
                 return array(
-                    "record"    => $record,
+                    "record"    => trim($record),
                     "ttl"       => $this->format_ttl( $ttl )
                 );
                 break;
@@ -266,7 +266,7 @@ class NSLookup
 
         $result = $this->sanitize_result( $result );
 
-        if( $result[ 3 ] )
+        if( count($result) > 2 && $result[ 3 ] )
         {
             $result = str_replace( ' ', '', $result[ 3 ] );
             $result = explode( ":", $result );
@@ -312,7 +312,8 @@ class NSLookup
         {
             if(
                 $value == "------------" ||
-                empty( $value )
+                empty( $value ) ||
+                stristr("???", $value)
             )
             {
                 unset( $data[$key] );
@@ -411,6 +412,7 @@ class NSLookup
         {
             throw new Exception( "Invalid domain format." );
         }
+        $domain = $this->sanitize_input( $domain );
         return $domain;
     }
 
@@ -424,8 +426,8 @@ class NSLookup
      */
     protected function validate_record( $prev, $next, $domain )
     {
-        if( $prev == $domain && stristr( $next, "ttl" ) ) return TRUE;
-        else return FALSE;
+        if( $prev == $domain && stristr( $next, "ttl" ) ) return True;
+        else return False;
     }
 
     /**
@@ -435,10 +437,12 @@ class NSLookup
      */
     protected function validate_type($type)
     {
-        if( !in_array(
-            $type,
-            [ 'all', 'any', 'a', 'mx', 'ns', 'txt' ] 
-        ) )
+        if(
+            !in_array(
+                $type,
+                [ 'all', 'any', 'a', 'mx', 'ns', 'txt' ] 
+            ) 
+        )
         {
             throw new Exception("Not a valid record type.");   
         }
